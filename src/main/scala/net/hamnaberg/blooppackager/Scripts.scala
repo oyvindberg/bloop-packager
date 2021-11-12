@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path, StandardOpenOption}
 object Scripts {
   private val standardPermissions = PosixFilePermissions.fromString("rwxrwxr-x")
 
-  def writeScripts(to: Path, jvmOptions: String, programs: List[Program]) =
+  def writeScripts(to: Path, jvmOptions: String, programs: List[Program]): Unit =
     programs.foreach { program =>
       val bashFile = to.resolve(program.name)
       Files.writeString(

@@ -12,12 +12,10 @@ object Program {
   }
 }
 
-final case class GlobalOpts(config: Path)
+sealed trait PackageCommand
 
-sealed trait Cmd {
-  def project: Option[String]
+object PackageCommand {
+  final case class Jars(projects: List[String]) extends PackageCommand
+  final case class Dist(project: String, programs: List[Program], path: Option[Path])
+    extends PackageCommand
 }
-
-final case class Jar(project: Option[String]) extends Cmd
-final case class Dist(project: Option[String], programs: List[Program], path: Option[Path])
-    extends Cmd
