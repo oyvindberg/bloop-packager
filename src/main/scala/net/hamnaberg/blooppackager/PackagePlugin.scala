@@ -15,20 +15,24 @@ import scala.util.Using
 object PackagePlugin {
   private val epochTime = FileTime.fromMillis(0)
 
-  def run(projects: List[Config.Project], cmd: Cmd): Either[String, Unit] = {
-    val filtered = cmd.project match {
-      case Some(name) => projects.find(_.name == name).toList
-      case None       => projects
+  def run(projects: List[Config.Project], cmd: PackageCommand): Either[String, Unit] = {
+    val filtered: List[Config.Project] = cmd match {
+      case PackageCommand.Jars(Nil) =>
+        projects
+      case PackageCommand.Jars(requestedProjects) =>
+        projects.collect { case p if requestedProjects.contains(p.name) => p }
+      case PackageCommand.Dist(project, _, _) =>
+        projects.collect { case p if p.name == project => p }
     }
 
     val dependencyLookup = projects.map(p => p.classesDir -> p).toMap
 
     filtered.foreach { project =>
       cmd match {
-        case Jar(_) =>
+        case PackageCommand.Jars(_) =>
           val maybeJar = jar(project)
           maybeJar.foreach(println)
-        case Dist(_, programs, distPath) =>
+        case PackageCommand.Dist(_, programs, distPath) =>
           val distDir = distPath.map(_.resolve(project.name)).getOrElse(project.out.resolve("dist"))
           Files.createDirectories(distDir)
           val lib = distDir.resolve("lib")
