@@ -1,5 +1,6 @@
 package net.hamnaberg.blooppackager
 
+import bleep.logging.Logger
 import bloop.config.Config
 
 import java.io.IOException
@@ -15,7 +16,7 @@ import scala.util.Using
 object PackagePlugin {
   private val epochTime = FileTime.fromMillis(0)
 
-  def run(projects: List[Config.Project], cmd: PackageCommand): Either[String, Unit] = {
+  def run(logger: Logger, projects: List[Config.Project], cmd: PackageCommand): Either[String, Unit] = {
     val filtered: List[Config.Project] = cmd match {
       case PackageCommand.Jars(Nil) =>
         projects
@@ -30,8 +31,10 @@ object PackagePlugin {
     filtered.foreach { project =>
       cmd match {
         case PackageCommand.Jars(_) =>
-          val maybeJar = jar(project)
-          maybeJar.foreach(println)
+          jar(logger, project) match {
+            case Some(jar) => logger.withContext(jar).info("built jar file")
+            case None => ()
+          }
         case PackageCommand.Dist(_, programs, distPath) =>
           val distDir = distPath.map(_.resolve(project.name)).getOrElse(project.out.resolve("dist"))
           Files.createDirectories(distDir)
@@ -39,7 +42,7 @@ object PackagePlugin {
           deleteDirectory(lib)
           Files.createDirectories(lib)
 
-          val jarFiles = dependenciesFor(project, dependencyLookup).distinct
+          val jarFiles = dependenciesFor(logger, project, dependencyLookup).distinct
 
           jarFiles.foreach { src =>
             Files.copy(src, lib.resolve(src.getFileName), StandardCopyOption.COPY_ATTRIBUTES)
@@ -51,7 +54,7 @@ object PackagePlugin {
             Scripts.writeScripts(bin, "", programs)
           }
 
-          println(distDir)
+          logger.withContext(distDir).info("dist complete")
       }
     }
     Right(())
@@ -75,12 +78,12 @@ object PackagePlugin {
       )
     }
 
-  def dependenciesFor(project: Config.Project, lookup: Map[Path, (Config.Project)]): List[Path] = {
+  def dependenciesFor(logger: Logger, project: Config.Project, lookup: Map[Path, (Config.Project)]): List[Path] = {
     val (dirs, jars) = project.classpath.partition(Files.isDirectory(_))
-    val mayBeJar = jar(project)
+    val mayBeJar = jar(logger, project)
     mayBeJar.toList ::: jars ::: dirs
       .flatMap(dir => lookup.get(dir).toList)
-      .flatMap(dependantProject => dependenciesFor(dependantProject, lookup))
+      .flatMap(dependantProject => dependenciesFor(logger, dependantProject, lookup))
   }
 
   def buildManifest(project: Config.Project): Manifest = {
@@ -93,7 +96,7 @@ object PackagePlugin {
     manifest
   }
 
-  def jar(project: Config.Project): Option[Path] = {
+  def jar(logger: Logger, project: Config.Project): Option[Path] = {
     val jarFile = project.out.resolve(s"${project.name}-jvm.jar")
     val internal = project.out.resolve("bloop-internal-classes")
 
@@ -132,19 +135,19 @@ object PackagePlugin {
             StandardOpenOption.CREATE,
             StandardOpenOption.TRUNCATE_EXISTING
           )
-          buildJar(project, jarFile, classes)
+          buildJar(logger, project, jarFile, classes)
         } else if (Files.exists(jarFile) && resourceLastChange.exists(change => change > Files.getLastModifiedTime(jarFile))) {
-          buildJar(project, jarFile, classes)
+          buildJar(logger, project, jarFile, classes)
         }
       }
     }
     Option.when(Files.exists(jarFile))(jarFile)
   }
 
-  private def buildJar(project: Config.Project, file: Path, classes: Path): Unit = {
+  private def buildJar(logger: Logger, project: Config.Project, file: Path, classes: Path): Unit = {
     val resourceDirectories = project.resources.getOrElse(Nil)
     if (Files.deleteIfExists(file)) {
-      Console.err.println(s"Deleted existing $file")
+      logger.debug(s"Deleted existing $file")
     }
     if (Files.notExists(file)) {
       val manifest = buildManifest(project)
