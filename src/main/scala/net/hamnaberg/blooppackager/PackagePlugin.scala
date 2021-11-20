@@ -1,12 +1,12 @@
 package net.hamnaberg.blooppackager
 
+import bleep.internal.FileUtils
 import bleep.logging.Logger
 import bloop.config.Config
 
-import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file._
-import java.nio.file.attribute.{BasicFileAttributes, FileTime}
+import java.nio.file.attribute.FileTime
 import java.util.jar.{Attributes, JarOutputStream, Manifest}
 import java.util.zip.ZipEntry
 import scala.jdk.OptionConverters._
@@ -39,7 +39,7 @@ object PackagePlugin {
           val distDir = distPath.map(_.resolve(project.name)).getOrElse(project.out.resolve("dist"))
           Files.createDirectories(distDir)
           val lib = distDir.resolve("lib")
-          deleteDirectory(lib)
+          FileUtils.deleteDirectory(lib)
           Files.createDirectories(lib)
 
           val jarFiles = dependenciesFor(logger, project, dependencyLookup).distinct
@@ -49,7 +49,7 @@ object PackagePlugin {
           }
           if (programs.nonEmpty) {
             val bin = distDir.resolve("bin")
-            deleteDirectory(bin)
+            FileUtils.deleteDirectory(bin)
             Files.createDirectories(bin)
             Scripts.writeScripts(bin, "", programs)
           }
@@ -59,24 +59,6 @@ object PackagePlugin {
     }
     Right(())
   }
-
-  private def deleteDirectory(dir: Path): Unit =
-    if (Files.exists(dir)) {
-      Files.walkFileTree(
-        dir,
-        new SimpleFileVisitor[Path] {
-          override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {
-            Files.deleteIfExists(file)
-            FileVisitResult.CONTINUE
-          }
-
-          override def postVisitDirectory(dir: Path, exc: IOException): FileVisitResult = {
-            Files.deleteIfExists(dir)
-            FileVisitResult.CONTINUE
-          }
-        }
-      )
-    }
 
   def dependenciesFor(logger: Logger, project: Config.Project, lookup: Map[Path, (Config.Project)]): List[Path] = {
     val (dirs, jars) = project.classpath.partition(Files.isDirectory(_))
