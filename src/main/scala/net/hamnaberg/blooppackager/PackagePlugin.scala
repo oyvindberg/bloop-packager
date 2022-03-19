@@ -1,6 +1,7 @@
 package net.hamnaberg.blooppackager
 
 import bleep.internal.FileUtils
+import bleep.internal.compat.{OptionalCompatOps, ListCompatOps}
 import bleep.logging.Logger
 import bloop.config.Config
 
@@ -9,7 +10,6 @@ import java.nio.file._
 import java.nio.file.attribute.FileTime
 import java.util.jar.{Attributes, JarOutputStream, Manifest}
 import java.util.zip.ZipEntry
-import scala.jdk.OptionConverters._
 import scala.math.Ordered.orderingToOrdered
 import scala.util.Using
 
@@ -89,21 +89,23 @@ object PackagePlugin {
         Files
           .walk(p)
           .filter(Files.isRegularFile(_))
-          .map(file => Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS))
+          .map[FileTime](file => Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS))
           .max(_.compareTo(_))
-          .toScala
+          .toScalaCompat
       )
-      .maxOption
+      .maxOptionCompat
 
     if (Files.exists(internal)) {
       val previousPath = project.out.resolve(".previous-classes-directory")
 
-      val previous = Option.when(Files.exists(previousPath))(Files.readString(previousPath)).map(Paths.get(_))
+      val previous: Option[Path] =
+        if (Files.exists(previousPath)) Some(Paths.get(Files.readString(previousPath))) else None
+
       val classesDir = Files
         .list(internal)
         .filter(_.getFileName.toString.startsWith("classes-bloop-cli"))
         .findFirst()
-        .toScala
+        .toScalaCompat
 
       classesDir.foreach { classes =>
         val nonEmptyDir = Files.list(classes).findFirst().isPresent //detect if we are empty
@@ -123,7 +125,7 @@ object PackagePlugin {
         }
       }
     }
-    Option.when(Files.exists(jarFile))(jarFile)
+    if (Files.exists(jarFile)) Some(jarFile) else None
   }
 
   private def buildJar(logger: Logger, project: Config.Project, file: Path, classes: Path): Unit = {
